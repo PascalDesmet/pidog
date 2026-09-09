@@ -235,6 +235,61 @@ def closest_tail(tail_angle):
 
 
 # ----------------------------------------------------------------------
+# display discovery (SSH / headless friendly)
+# ----------------------------------------------------------------------
+def _ensure_display():
+    """Make sure pygame can open a visible window.
+
+    When run over SSH, ``$DISPLAY`` is usually empty and SDL silently falls
+    back to a dummy/offscreen driver, so ``set_mode`` succeeds but no window
+    appears.  If ``$DISPLAY`` is unset we try to point it at the Pi's local
+    X server (``:0``) when its socket exists.
+    """
+    import os
+    disp = os.environ.get("DISPLAY", "").strip()
+    if disp:
+        return
+    # look for an X server socket: /tmp/.X11-unix/X0 -> DISPLAY=:0
+    sock_dir = "/tmp/.X11-unix"
+    if os.path.isdir(sock_dir):
+        sockets = sorted(
+            f for f in os.listdir(sock_dir)
+            if f.startswith("X") and f[1:].isdigit())
+        if sockets:
+            n = sockets[0][1:]
+            candidate = f":{n}"
+            os.environ["DISPLAY"] = candidate
+            print(f"[emulator] DISPLAY was unset; using {candidate} "
+                  f"(the Pi's local desktop). If you're connected over SSH "
+                  f"with X forwarding, run `export DISPLAY=:0` first or use "
+                  f"`ssh -X`.")
+
+
+def _warn_if_dummy_display():
+    """Print a clear warning if SDL picked a non-visible video driver."""
+    try:
+        name = pygame.display.get_wm_info()
+        # get_wm_info is unreliable across drivers; use SDL_VIDEODRIVER env
+        # and the name pygame reports via get_init is not helpful, so probe
+        # by checking the window manager info / driver name where available.
+    except Exception:
+        pass
+    import os
+    drv = os.environ.get("SDL_VIDEODRIVER", "")
+    # If the user forced a driver, respect it and stay quiet.
+    if drv:
+        return
+    # Heuristic: if DISPLAY is still empty after _ensure_display, we are
+    # effectively headless and SDL likely chose 'dummy' or an offscreen driver.
+    if not os.environ.get("DISPLAY", "").strip():
+        print("[emulator] WARNING: no display found. The window will not be "
+              "visible. Options:\n"
+              "  - run on the Pi's desktop (or `export DISPLAY=:0`)\n"
+              "  - SSH with X forwarding: `ssh -X pds@<pi>` then run the demo\n"
+              "  - set SDL_VIDEODRIVER=dummy for headless testing (no window)")
+
+
+# ----------------------------------------------------------------------
 # stick-figure drawing
 # ----------------------------------------------------------------------
 def draw_stick(surface, rect, state, scale=1.0):
@@ -281,13 +336,13 @@ def draw_stick(surface, rect, state, scale=1.0):
     keys = ['lf', 'rf', 'lh', 'rh']
     is_right = [False, True, False, True]
 
-    # ground estimate from average foot depth
+    # ground estimate from average foot depth (positive z = below hip)
     foot_zs = []
     for i, (la, fa) in enumerate(leg_pairs):
         _, fz, _, _ = Kinematics.angles_to_leg_coord(la, fa, is_right[i])
         foot_zs.append(fz)
     ground_offset = (sum(foot_zs) / len(foot_zs)) * px_per_mm
-    ground_y = hip_z - ground_offset  # screen y of the ground line
+    ground_y = hip_z + ground_offset  # screen y grows downward; z is down-positive
 
     # draw ground line
     pygame.draw.line(surface, (90, 90, 90),
@@ -300,8 +355,10 @@ def draw_stick(surface, rect, state, scale=1.0):
         # right legs drawn with a small lateral offset so both are visible
         xoff = -6 if is_right[i] else 6
         hip = (hx + xoff, hz)
-        knee = (hx + xoff + ky * px_per_mm, hz - kz * px_per_mm)
-        foot = (hx + xoff + fy * px_per_mm, hz - fz * px_per_mm)
+        # z is down-positive in kinematics; screen y is down-positive too,
+        # so add z (not subtract) to put feet below the hips.
+        knee = (hx + xoff + ky * px_per_mm, hz + kz * px_per_mm)
+        foot = (hx + xoff + fy * px_per_mm, hz + fz * px_per_mm)
         col = (255, 165, 0) if not is_right[i] else (200, 120, 0)
         width = 3 if not is_right[i] else 2
         pygame.draw.line(surface, col, hip, knee, width)
@@ -316,10 +373,11 @@ def draw_stick(surface, rect, state, scale=1.0):
     # head at the front (right side). Indicate pitch (up/down) and yaw (lateral)
     head_base = (cx + half_l, hip_z - body_w / 2)
     head_len = 46 * px_per_mm
-    # pitch: negative = up. In side view pitch tilts the head up/down.
+    # pitch: negative = up (e.g. head_bark uses -40). Screen y is down-positive,
+    # so head_tip_y = base_y + head_len * sin(pitch): negative pitch -> up.
     pitch_rad = math.radians(head_pitch)
     head_tip = (head_base[0] + head_len * math.cos(pitch_rad),
-                head_base[1] - head_len * math.sin(pitch_rad))
+                head_base[1] + head_len * math.sin(pitch_rad))
     pygame.draw.line(surface, (255, 80, 80), head_base, head_tip, 4)
     pygame.draw.circle(surface, (255, 80, 80), (int(head_tip[0]), int(head_tip[1])), 6)
     # yaw indicator: a small horizontal arrow whose length = yaw
@@ -328,7 +386,7 @@ def draw_stick(surface, rect, state, scale=1.0):
     pygame.draw.line(surface, (80, 200, 255), head_tip, yaw_tip, 2)
     # roll indicator: a short tilted segment
     roll_rad = math.radians(head_roll)
-    roll_tip = (head_base[0], head_base[1] - 18 * px_per_mm * math.sin(roll_rad) - 4)
+    roll_tip = (head_base[0], head_base[1] + 18 * px_per_mm * math.sin(roll_rad) - 4)
     pygame.draw.line(surface, (180, 255, 80), head_base, roll_tip, 2)
 
     # tail at the rear (left side). tail_angle is lateral (left/right)
@@ -362,9 +420,11 @@ class Renderer:
         self.stick_scale = 1.0
         self.reference = _reference_leg_angles()
 
+        _ensure_display()
         pygame.init()
         pygame.display.set_caption("PiDog Emulator")
         self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+        _warn_if_dummy_display()
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 14)
         self.font_big = pygame.font.SysFont("monospace", 18, bold=True)

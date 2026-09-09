@@ -7,7 +7,7 @@ head / tail movement, preset actions, pose kinematics, wait helpers) and
 drives an in-memory *virtual* robot whose servo state is visualised by a
 renderer using your own photos of the dog.
 
-## Quick start
+## Quick start (from sirus laptop)
 
 ```bash
 cd /home/pds/pidog
