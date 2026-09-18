@@ -44,6 +44,7 @@ from .features.instances import (
     FindObject,
     RecognizePerson,
     CheckWaterBowl,
+    PerformActions,
 )
 from .brain import Brain
 from .io import TextIO, VoiceIO
@@ -59,21 +60,28 @@ log = logging.getLogger(__name__)
 ROOT_LOGGER_NAME = "pidog_app"
 
 
+def _report(message: str) -> None:
+    """Log an event and echo it to the console."""
+    log.info(message)
+    print(message)
+
+
 # ── dependency injection ──────────────────────────────────────────────────
-def build_features(body: Body, senses: Senses, camera: Camera) -> list:
+def build_features(body: Body, senses: Senses, camera: Camera, cfg: Config) -> list:
     """Instantiate every feature with the shared facades.
 
     Add new features here — that's the only place to register them.
     """
     return [
-        WakeFromStasis(body, senses, camera),
-        FindObject(body, senses, camera),
-        RecognizePerson(body, senses, camera),
-        CheckWaterBowl(body, senses, camera),
+        WakeFromStasis(body, senses, camera, cfg),
+        FindObject(body, senses, camera, cfg),
+        RecognizePerson(body, senses, camera, cfg),
+        CheckWaterBowl(body, senses, camera, cfg),
+        PerformActions(body, senses, camera, cfg),
     ]
 
 
-def build_io(cfg: Config) -> TextIO | VoiceIO:
+def build_io(cfg: Config, body: Body | None = None) -> TextIO | VoiceIO:
     mode = cfg.get("io.mode", "text")
     name = cfg.get("dog.name", "Scooby Doo")
     welcome = f"Hi, I'm {name}. Type 'quit' to exit."
@@ -87,6 +95,7 @@ def build_io(cfg: Config) -> TextIO | VoiceIO:
             stt_language=v.get("stt_language", "en-us"),
             tts_model=v.get("tts_model", "en_US-ryan-low"),
             keyboard_enable=True,
+            body=body,
         )
     return TextIO(welcome=welcome)
 
@@ -108,13 +117,17 @@ class App:
             vflip=cfg.get("vision.camera_vflip", False),
             hflip=cfg.get("vision.camera_hflip", False),
         )
-        self.voice = VoiceIO(            
+        self.io = build_io(cfg, body=self.body)
+        # ``voice`` handles announcements and sound effects. In voice mode
+        # it IS the io object (one STT/TTS pair); in text mode a dedicated
+        # VoiceIO still speaks replies and plays sounds.
+        self.voice = self.io if isinstance(self.io, VoiceIO) else VoiceIO(
             stt_language=cfg.get("io.voice.stt_language", "en-us"),
             tts_model=cfg.get("io.voice.tts_model", "en_US-ryan-low"),
             keyboard_enable=True,
             body=self.body)
         self.registry = FeatureRegistry(
-            build_features(self.body, self.senses, self.camera)
+            build_features(self.body, self.senses, self.camera, cfg)
         )
 
         # LLM: use the OpenAI-compatible /v1/chat/completions endpoint so we
@@ -138,7 +151,6 @@ class App:
             registry=self.registry,
             name=cfg.get("dog.name", "Scooby Doo"),
         )
-        self.io = build_io(cfg)
 
     # ── lifecycle ────────────────────────────────────────────────────────
     def start(self) -> None:
@@ -215,9 +227,14 @@ class App:
                     self.voice.speak("I'm sleeping. Pet my head to wake me up.")
                     continue
                 # Real input while awake → reset the idle timer.
-                with self._sleep_lock:
-                    self._awake_time = datetime.now()
-                reply = self.brain.handle(user_text)
+                self._mark_activity()
+                try:
+                    reply = self.brain.handle(user_text)
+                except Exception:
+                    log.exception("brain.handle failed; resetting dog to startup state")
+                    self.io.speak("Sorry, my brain glitched. Give me a second to reset.")
+                    self._reset_to_startup()
+                    continue
                 self.io.speak(reply)
         except KeyboardInterrupt:
             pass
@@ -226,9 +243,16 @@ class App:
             self._wake_complete.set()  # unblock any wait on wake_complete
             sleep_watcher.join(timeout=1)
             wake_watcher.join(timeout=1)
-            _quit_dog_gracefully(self)
-            _log_energy_level(self, "Stop")
+            self._quit_dog_gracefully()
+            self.log_energy_level("Stop")
             self.stop()
+
+    def _mark_activity(self, wake: bool = False) -> None:
+        """Reset the idle timer; with ``wake=True`` also clears sleeping."""
+        with self._sleep_lock:
+            if wake:
+                self._sleeping = False
+            self._awake_time = datetime.now()
 
     def _sleep_watcher(self, sleep_delay: int) -> None:
         """Background loop that triggers the sleep posture after idle.
@@ -248,10 +272,8 @@ class App:
                     continue
                 elapsed = (datetime.now() - self._awake_time).seconds
                 if elapsed > sleep_delay:
-                    self.voice.speak("I'm tired, I'm going to sleep now. Pet my head to wake me up.")                    
-                    message = f"idle for {elapsed}s (> {sleep_delay}s); going to sleep"
-                    log.info(message)
-                    print(message)
+                    self.voice.speak("I'm tired, I'm going to sleep now. Pet my head to wake me up.")
+                    _report(f"idle for {elapsed}s (> {sleep_delay}s); going to sleep")
                     self._sleeping = True
                     do_sleep = True
                 else:
@@ -291,19 +313,44 @@ class App:
             touch = self.senses.touch()
             if touch in self._like_touch_styles:
                 style_name = TouchStyle(touch).name if touch else touch
-                message = f"waking up on {style_name} touch"
-                log.info(message)
-                print(message)
+                _report(f"waking up on {style_name} touch")
 
                 self.voice.stop_sound()
                 self.body.light(mode="listen", color="yellow", speed=1)
                 self.body.set_status(ActionStatus.STANDBY)
 
-                with self._sleep_lock:
-                    self._sleeping = False
-                    self._awake_time = datetime.now()                    
+                self._mark_activity(wake=True)
 
                 self._wake_complete.set()
+
+    def _reset_to_startup(self) -> None:
+        """Restore the dog to its post-startup state after a brain error.
+
+        Mirrors what ``start()``/``run()`` establish at boot: awake, sit
+        posture, breath-yellow chest light, idle timer reset, and a fresh
+        brain conversation (system prompt only). Any looping sound (e.g.
+        snoring) is stopped.
+        """
+        self._mark_activity(wake=True)
+        self.voice.stop_sound()
+        self.body.set_status(ActionStatus.STANDBY)
+        self.body.sit()
+        self.body.light(mode="breath", color="yellow", speed=1)
+        self.brain.reset()
+
+    def _quit_dog_gracefully(self) -> None:
+        bps = 2
+        brightness = 1.0
+        for i in range(10):
+            self.body.light(mode="monochromatic", color="white", speed=bps, brightness=brightness)
+            time.sleep(0.1)
+            bps /= 2
+            brightness /= 2
+        self.body.light_off()
+
+    def log_energy_level(self, message: str):
+        """Read the battery voltage once and log/print it with a label."""
+        _report(f"{message} - Battery Voltage: {self.body.read_energy_level():.2f}V")
 
 def _level_to_int(value) -> int:
     """Accept either a numeric level (e.g. ``20``) or a name (e.g. ``"INFO"``)."""
@@ -344,28 +391,12 @@ def _configure_logging(cfg: Config) -> None:
         handler._pidog_app = True  # marker so we don't add it twice
         root.addHandler(handler)
 
-def _quit_dog_gracefully(self) -> None:    
-    bps = 2
-    brightness = 1.0
-    for i in range(10):    
-        self.body.light(mode="monochromatic", color="white", speed=bps, brightness=brightness)
-        time.sleep(0.1)
-        bps /= 2
-        brightness /= 2
-    self.body.light_off()
-
-def _log_energy_level(self, message: str):
-    """Read the battery voltage once and append ``timestamp,voltage`` to the log file."""
-    log_message = f"{message} - Battery Voltage: {self.body.read_energy_level():.2f}V"
-    log.info(log_message)   
-    print(log_message)
-
 def main() -> int:
     config_path = sys.argv[1] if len(sys.argv) > 1 else None
     cfg = load_config(config_path)
     _configure_logging(cfg)
     app = App(cfg)
-    _log_energy_level(app, "Start")
+    app.log_energy_level("Start")
     app.run()
     return 0
 

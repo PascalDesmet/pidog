@@ -6,6 +6,7 @@ stays decoupled from the SunFounder API.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from typing import Iterable
 
 from pidog.pidog import Pidog
@@ -57,8 +58,13 @@ class Body:
 
     # ── actions ──────────────────────────────────────────────────────────
     def do_action_flow(self, *actions: str | Operations) -> None:
-        """Queue one or more named actions (e.g. ``body.do("bark", "nod")``)."""
+        """Queue one or more named actions (e.g. ``body.do_action_flow("bark", "nod")``)."""
         self.action_flow.add_action(*actions)
+
+    def do_and_wait(self, *actions: str | Operations) -> None:
+        """Queue actions and block until they finish."""
+        self.do_action_flow(*actions)
+        self.wait_done()
 
     def do_action(self, action_name: Operations, step_count=1, speed=50, pitch_comp=0):
         self.dog.do_action(action_name, step_count, speed, pitch_comp)
@@ -73,11 +79,11 @@ class Body:
 
     def wait_legs_done(self):
         """Wait until the legs movement is finished"""
-        self.dog.wait.legs_done()        
+        self.dog.wait_legs_done()        
 
     def wait_tail_done(self):
         """Wait until the tail movement is finished"""
-        self.dog.wait.tail_done()
+        self.dog.wait_tail_done()
 
     def wait_all_done(self) -> None:
         """Wait until all body movements are finished"""
@@ -85,6 +91,19 @@ class Body:
 
     def set_status(self, status: ActionStatus) -> None:
         self.action_flow.set_status(status)
+
+    @contextmanager
+    def thinking(self):
+        """Run a block in THINK status, then restore STANDBY.
+
+        THINK suppresses the standby loop's random fidget actions so they
+        can't fight the servos while a feature is in control.
+        """
+        self.set_status(ActionStatus.THINK)
+        try:
+            yield
+        finally:
+            self.set_status(ActionStatus.STANDBY)
 
     # ── chest light strip ────────────────────────────────────────────────
     def light(self, mode: str, color: str, speed: int = 1, brightness: float = 1.0) -> None:

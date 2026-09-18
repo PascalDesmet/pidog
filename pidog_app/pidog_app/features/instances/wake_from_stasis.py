@@ -28,12 +28,10 @@ class WakeFromStasis(Feature):
         self.body.light("breath", "cyan", 1)
         self.body.set_status(ActionStatus.ACTIONS)
         # Stretch first (loosens servos), then stand.
-        self.body.do("stretch")
-        self.body.wait_done()
+        self.body.do_and_wait("stretch")
         self.body.stand()
         self.body.wait_done()
-        self.body.do("nod")
-        self.body.wait_done()
+        self.body.do_and_wait("nod")
         self.body.set_status(ActionStatus.STANDBY)
         return FeatureResult(
             text="I've woken up, stretched, and I'm standing ready.",
