@@ -58,6 +58,20 @@ class Camera:
         _get_vilib().take_photo(name, path=str(p))
         return p / f"{name}.jpg"
 
+    def frame(self):
+        """Latest camera frame as a fresh RGB ndarray, or None.
+
+        ``Vilib.img`` is rebound every camera loop iteration, so copying it
+        gives callers a stable frame to analyse. Returns None before the
+        camera produces frames (``Vilib.img`` starts as a managed list).
+        """
+        import numpy as np
+
+        img = _get_vilib().img
+        if getattr(img, "ndim", 0) < 2:
+            return None
+        return np.array(img)
+
     # ── detectors (toggle on/off; read results from Vilib state) ─────────
     def face_detect(self, on: bool = True) -> None:
         _get_vilib().face_detect_switch(on)

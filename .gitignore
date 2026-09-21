@@ -3,6 +3,7 @@
 dev/*
 photo
 test/photo*
+pidog_app/surveillance_photos/*
 test/scene/*
 backups/*
 **secret*

@@ -45,6 +45,7 @@ from .features.instances import (
     RecognizePerson,
     CheckWaterBowl,
     PerformActions,
+    GuardThePerimeter,
 )
 from .brain import Brain
 from .io import TextIO, VoiceIO
@@ -78,6 +79,7 @@ def build_features(body: Body, senses: Senses, camera: Camera, cfg: Config) -> l
         RecognizePerson(body, senses, camera, cfg),
         CheckWaterBowl(body, senses, camera, cfg),
         PerformActions(body, senses, camera, cfg),
+        GuardThePerimeter(body, senses, camera, cfg),
     ]
 
 
