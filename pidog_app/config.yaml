@@ -40,9 +40,9 @@ guard:
   # seconds between photos while movement persists
   photo_interval: 10
   # stop taking photos after this many seconds without movement
-  calm_timeout: 5
+  calm_timeout: 20
   # total seconds to keep watch per guard_the_perimeter call
-  duration: 300
+  duration: 3000
   # fraction of frame pixels that must change to count as movement
   motion_threshold: 0.02
   photos_dir: "surveillance_photos"

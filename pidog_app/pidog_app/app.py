@@ -182,6 +182,10 @@ class App:
         self._awake_time = datetime.now()
         self._sleeping = False
         self._sleep_lock = threading.Lock()
+        # Set while brain.handle() runs so the sleep watcher can't fire
+        # its lie/snore sequence during a long-running feature (e.g.
+        # guard_the_perimeter runs far longer than sleep_delay).
+        self._sleep_inhibit = threading.Event()
         print(f"Sleep delay: {sleep_delay}, awake time: {self._awake_time}")
 
         # Background watcher: ``self.io.listen()`` blocks until input arrives,
@@ -230,6 +234,13 @@ class App:
                     continue
                 # Real input while awake → reset the idle timer.
                 self._mark_activity()
+                # Hold THINK so standby fidgets (waiting/feet_shake) can't
+                # start while the brain works, and inhibit the sleep watcher
+                # so its lie/snore sequence can't interrupt a long-running
+                # feature mid-motion. A wake-watcher STANDBY flip can't happen
+                # either because _sleeping stays False while inhibited.
+                self.body.set_status(ActionStatus.THINK)
+                self._sleep_inhibit.set()
                 try:
                     reply = self.brain.handle(user_text)
                 except Exception:
@@ -237,6 +248,12 @@ class App:
                     self.io.speak("Sorry, my brain glitched. Give me a second to reset.")
                     self._reset_to_startup()
                     continue
+                finally:
+                    self._sleep_inhibit.clear()
+                    # Restart the idle timer from the end of the feature so
+                    # the dog doesn't fall asleep the moment it finishes.
+                    self._mark_activity()
+                    self.body.set_status(ActionStatus.STANDBY)
                 self.io.speak(reply)
         except KeyboardInterrupt:
             pass
@@ -269,6 +286,9 @@ class App:
             time.sleep(1)
             if not self._running:
                 break
+            # A feature is running — the dog is busy, not idle.
+            if self._sleep_inhibit.is_set():
+                continue
             with self._sleep_lock:
                 if self._sleeping:
                     continue
