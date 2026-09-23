@@ -113,9 +113,6 @@ python3 -m venv --system-site-packages /home/pds/.venv
 
 Editable installs — links directly to your source folders, so edits take effect immediately without reinstalling:
 
-
-
-
 bash
 ```
 >_ bash
@@ -125,9 +122,9 @@ bash
 
 Missing dependencies resolved:
 
-python3-pyaudio (apt) — for robot_hat.music
-python3-opencv (apt) — for vilib, matches existing libopencv410 system libs
-flask (pip, in-venv) — for vilib's web streaming server
+python3-pyaudio (apt) — for robot_hat.music  
+python3-opencv (apt) — for vilib, matches existing libopencv410 system libs  
+flask (pip, in-venv) — for vilib's web streaming server  
 Verified: import pidog, robot_hat, vilib now resolves to __init__.py, __init__.py, __init__.py respectively.
 
 # Python environment on raspberry PI

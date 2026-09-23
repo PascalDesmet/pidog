@@ -1,5 +1,3 @@
-
-
 # pidog_app — AI-driven feature architecture for the Pidog robot dog
 
 This project is the application layer that turns the SunFounder Pidog
@@ -340,3 +338,61 @@ tmux attach -t pidog
 
 http://192.168.0.197:9000/mjpg
 
+## Avoid huge AI context
+
+The project is stored in a DevOps git repository, but for easy of working I open my user's home page from the Raspberry PI. It gives me quick access to files outside the Pidog project as well.  
+Disadvantage is that AI request scan the entire folder structure to get an understanding of what they can work with, creating a huge context that is send along your request.
+
+To avoid this you can create two files.  
+One is /home/pds/.devin/config.json — deny rules blocking reads in .cache, .venv, .devin-server, .codeium, .vscode*, .ssh, model dirs, and the noisy parts of .config (Chromium, VS Code). I deliberately left robot-hat, vilib, sunfounder-voice-assistant, and pidog readable since they're your app's editable deps and runtime config.
+
+```bash
+{
+  "permissions": {
+    "deny": [
+      "Read(.cache/**)",
+      "Read(.venv/**)",
+      "Read(.devin-server/**)",
+      "Read(.codeium/**)",
+      "Read(.copilot/**)",
+      "Read(.dotnet/**)",
+      "Read(.local/**)",
+      "Read(.npm/**)",
+      "Read(.vscode/**)",
+      "Read(.vscode-shared/**)",
+      "Read(.ssh/**)",
+      "Read(.piper_models/**)",
+      "Read(.vosk_models/**)",
+      "Read(.config/chromium/**)",
+      "Read(.config/Code/**)",
+      "Read(.config/libreoffice/**)",
+      "Read(.config/dconf/**)",
+      "Read(.bash_history)",
+      "Read(.Xauthority)"
+    ]
+  }
+```
+
+The other one is /home/pds/AGENTS.md — short always-on rule pointing at pidog_app as the project, noting the venv, config locations, and the pidog-app systemd service.
+
+```bash
+# Workspace Rules
+
+This workspace is the home directory, NOT a project root. Do not scan or search the
+whole home directory — scope all file searches, greps, and edits to the relevant
+project directory below.
+
+## Main project
+
+- **pidog_app**: `/home/pds/pidog/pidog_app/` — AI-driven feature architecture for the
+  SunFounder PiDog robot dog. Python package, `pyproject.toml` in that dir.
+- Local (editable) dependency repos, read-only unless asked: `robot-hat/`, `vilib/`,
+  `sunfounder-voice-assistant/`, `pidog/` (SunFounder lib + examples).
+
+## Runtime
+
+- Runs under `~/.venv` (Python 3.13). Config: `~/.config/pidog/pidog.conf` and
+  `pidog/pidog_app/config.yaml`.
+- Managed by systemd user service `pidog-app.service` (runs in a tmux session
+  named `pidog`): `systemctl --user status pidog-app`.
+```
