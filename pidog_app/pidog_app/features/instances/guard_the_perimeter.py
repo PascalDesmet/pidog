@@ -21,9 +21,16 @@ from ..base import Feature, FeatureResult
 log = logging.getLogger(__name__)
 
 # Head positions ([yaw, roll, pitch]) swept while guarding.
-GUARD_POSITIONS = ((-75, 0, 0), (-25, 0, 0), (25, 0, 0), (75, 0, 0))
+# yaw = left/right
+# roll = rotate left/right
+# pitch = up/down
+#GUARD_POSITIONS = ((-75, 0, 0), (-25, 0, 0), (25, 0, 0), (75, 0, 0))
+GUARD_POSITIONS = ((-75, 0, 0), (-50,0,-50), (-25,0,-25),
+                   (0,0,-75), (25,0,-25), (50,0,-50), 
+                   (0,0,75), (50,0,50), (25,0,25),  
+                   (0,0,75),(-25,0,25), (-50,0,50))
 
-HEAD_SPEED = 25   # very slow sweep
+HEAD_SPEED = 15   # very slow sweep
 DWELL_S = 4.0     # watch time per heading
 SETTLE_S = 0.4    # let a fresh frame arrive after the head stops
 SAMPLE_S = 0.2    # frame sampling period while watching
@@ -32,25 +39,37 @@ SAMPLE_S = 0.2    # frame sampling period while watching
 class GuardThePerimeter(Feature):
     name = "guard_the_perimeter"
     description = (
-        "Guard the perimeter. The dog lies down and very slowly looks "
+        "Guard the perimeter. The dog stands up and very slowly looks "
         "around, watching for movement with the camera. When it sees "
         "movement it takes photos into the surveillance_photos folder, "
         "named with date and time. Use this when the user says 'guard "
         "the perimeter', 'keep watch', or 'watch the house'."
     )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "duration": {
-                "type": "number",
-                "description": (
-                    "How many seconds to keep watch. Defaults to the "
-                    "guard.duration config value."
-                ),
+    @property
+    def parameters(self) -> dict:
+        # The LLM sees this schema and tends to fill in optional numeric
+        # arguments with plausible values (e.g. 60) even when the user
+        # never asked for a duration. Naming the real configured default
+        # and telling the model to omit the argument keeps the config
+        # value authoritative.
+        default = (self.cfg.get("guard.duration", 300.0)
+                   if self.cfg is not None else 300.0)
+        return {
+            "type": "object",
+            "properties": {
+                "duration": {
+                    "type": "number",
+                    "description": (
+                        "How many seconds to keep watch. OMIT this "
+                        "argument unless the user explicitly asks for a "
+                        f"specific watch duration; when omitted the "
+                        f"configured default of {float(default):g} "
+                        "seconds is used."
+                    ),
+                },
             },
-        },
-        "required": [],
-    }
+            "required": [],
+        }
 
     def run(self, duration=None, **kwargs) -> FeatureResult:
         photo_interval = float(self.cfg.get("guard.photo_interval", 10.0))
@@ -75,7 +94,7 @@ class GuardThePerimeter(Feature):
         taken = 0
         deadline = time.time() + duration
         with self.body.thinking():
-            self.body.lie()
+            self.body.stand()
             self.camera.start()
             while time.time() < deadline:
                 for yrp in GUARD_POSITIONS:
