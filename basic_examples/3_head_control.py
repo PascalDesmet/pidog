@@ -50,13 +50,13 @@ import time
 my_dog = Pidog()
 
 
-# sit
-sit_action = [
-    [30, 60, -30, -60, 80, -45, -80, 45],
-]
-my_dog.legs_move(sit_action, speed=30)
-# wait all legs actions done
-my_dog.wait_legs_done()
+# # sit
+# sit_action = [
+#     [30, 60, -30, -60, 80, -45, -80, 45],
+# ]
+# my_dog.legs_move(sit_action, speed=30)
+# # wait all legs actions done
+# my_dog.wait_legs_done()
 
 
 # level-view by head_move_raw()
@@ -75,12 +75,35 @@ my_dog.wait_head_done()
 #     [0, 0, 0], [0, 0, 45], [0, 0, 0], [0, 0, -60], [0, 0, 0],
 # ]
 
-head_test_actions = ((-75, 0, 0), (-50,0,-50), (-25,0,-25),
-                   (0,0,-75), (25,0,-25), (50,0,-50), 
-                   (0,0,75), (50,0,50), (25,0,25),  
-                   (0,0,75),(-25,0,25), (-50,0,50))
+# head_test_actions = ((-75, 0, 0), (-50,0,-50), (-25,0,-25),
+#                    (0,0,-75), (25,0,-25), (50,0,-50), 
+#                    (0,0,75), (50,0,50), (25,0,25),  
+#                    (0,0,75),(-25,0,25), (-50,0,50))
 
-while True:
-    my_dog.head_move(head_test_actions, pitch_comp=-30, speed=50)
-    my_dog.wait_head_done()
-    time.sleep(0.2)
+head_test_actions = (
+    (-60, 0,   0),   # far left
+    (-42, 0,  42),   # up-left
+    (  0, 0,  50),   # top
+    ( 42, 0,  42),   # up-right
+    ( 50, 0,   0),   # far right
+    ( 42, 0, -42),   # down-right
+    (  0, 0, -60),   # bottom
+    (-42, 0, -42),   # down-left
+)
+
+def move_head():
+    while True:
+        my_dog.head_move(head_test_actions, pitch_comp=-30, speed=50)
+        my_dog.wait_head_done()
+        time.sleep(0.4)
+
+
+if __name__ == "__main__":
+    try:
+        move_head()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"\033[31mERROR: {e}\033[m")
+    finally:
+        my_dog.close()

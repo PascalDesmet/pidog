@@ -25,10 +25,16 @@ log = logging.getLogger(__name__)
 # roll = rotate left/right
 # pitch = up/down
 #GUARD_POSITIONS = ((-75, 0, 0), (-25, 0, 0), (25, 0, 0), (75, 0, 0))
-GUARD_POSITIONS = ((-75, 0, 0), (-50,0,-50), (-25,0,-25),
-                   (0,0,-75), (25,0,-25), (50,0,-50), 
-                   (0,0,75), (50,0,50), (25,0,25),  
-                   (0,0,75),(-25,0,25), (-50,0,50))
+GUARD_POSITIONS = (
+    (-60, 0,   0),   # far left
+    (-42, 0,  42),   # up-left
+    (  0, 0,  50),   # top
+    ( 42, 0,  42),   # up-right
+    ( 50, 0,   0),   # far right
+    ( 42, 0, -42),   # down-right
+    (  0, 0, -60),   # bottom
+    (-42, 0, -42),   # down-left
+)
 
 HEAD_SPEED = 15   # very slow sweep
 DWELL_S = 4.0     # watch time per heading
