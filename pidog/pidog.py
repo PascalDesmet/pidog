@@ -402,11 +402,15 @@ class Pidog():
         while not self.exit_flag:
             try:
                 with self.legs_thread_lock:
-                    self.leg_current_angles = list.copy(self.legs_action_buffer[0])
+                    action = self.legs_action_buffer[0]
+                    self.leg_current_angles = list.copy(action)
                 # Release lock after copying data before the next operations
                 self.legs.servo_move(self.leg_current_angles, self.legs_speed)
                 with self.legs_thread_lock:
-                    self.legs_action_buffer.pop(0)
+                    # Pop only if the buffer wasn't cleared and refilled
+                    # mid-move — otherwise pop(0) would drop a new frame.
+                    if self.legs_action_buffer and self.legs_action_buffer[0] is action:
+                        self.legs_action_buffer.pop(0)
             except IndexError:
                 sleep(0.001)
             except Exception as e:
@@ -418,15 +422,22 @@ class Pidog():
         while not self.exit_flag:
             try:
                 with self.head_thread_lock:
-                    self.head_current_angles = list.copy(self.head_action_buffer[0])
-                    self.head_action_buffer.pop(0)
-                # Release lock after copying data before the next operations
+                    action = self.head_action_buffer[0]
+                    self.head_current_angles = list.copy(action)
+                # Release lock after copying data before the next operations.
+                # The entry is popped only after servo_move finishes so
+                # is_head_done() stays False while the head is still moving.
                 _angles = list.copy(self.head_current_angles)
                 _angles[0] = self.limit(self.HEAD_YAW_MIN, self.HEAD_YAW_MAX, _angles[0])
                 _angles[1] = self.limit(self.HEAD_ROLL_MIN, self.HEAD_ROLL_MAX, _angles[1])
                 _angles[2] = self.limit(self.HEAD_PITCH_MIN, self.HEAD_PITCH_MAX, _angles[2])
                 _angles[2] += self.HEAD_PITCH_OFFSET
                 self.head.servo_move(_angles, self.head_speed)
+                with self.head_thread_lock:
+                    # Pop only if the buffer wasn't cleared and refilled
+                    # mid-move — otherwise pop(0) would drop a new frame.
+                    if self.head_action_buffer and self.head_action_buffer[0] is action:
+                        self.head_action_buffer.pop(0)
             except IndexError:
                 sleep(0.001)
             except Exception as e:
@@ -438,10 +449,17 @@ class Pidog():
         while not self.exit_flag:
             try:
                 with self.tail_thread_lock:
-                    self.tail_current_angles = list.copy(self.tail_action_buffer[0])
-                    self.tail_action_buffer.pop(0)
-                # Release lock after copying data before the next operations
+                    action = self.tail_action_buffer[0]
+                    self.tail_current_angles = list.copy(action)
+                # Release lock after copying data before the next operations.
+                # The entry is popped only after servo_move finishes so
+                # is_tail_done() stays False while the tail is still moving.
                 self.tail.servo_move(self.tail_current_angles, self.tail_speed)
+                with self.tail_thread_lock:
+                    # Pop only if the buffer wasn't cleared and refilled
+                    # mid-move — otherwise pop(0) would drop a new frame.
+                    if self.tail_action_buffer and self.tail_action_buffer[0] is action:
+                        self.tail_action_buffer.pop(0)
             except IndexError:
                 sleep(0.001)
             except Exception as e:

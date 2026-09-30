@@ -8,7 +8,7 @@ dog:
 
 llm:
   # Ollama runs on the laptop; expose it on the LAN in Ollama settings.
-  ip: "192.168.0.136"
+  ip: "192.168.0.163"
   port: 11434
   # Must support tool/function calling: llama3.1, qwen2.5, mistral-nemo, ...
   model: "qwen2.5:7b"
@@ -37,16 +37,27 @@ vision:
   face_track_seen_hold: 10.0
 
 guard:
+  # very slow sweep
+  head_speed: 15   
+  # watch time per heading
+  dwell_seconds: 4.0     
+  # let a fresh frame arrive after the head stops
+  settle_seconds: 0.4
+  # max seconds to wait for a still view after a head move (absorbs
+  # servo overshoot and camera frame lag)
+  settle_timeout: 6.0    
+  # frame sampling period while watching
+  sample_seconds: 0.2    
   # seconds between photos while movement persists
   photo_interval: 10
   # stop taking photos after this many seconds without movement
   calm_timeout: 20
   # total seconds to keep watch per guard_the_perimeter call
-  duration: 3000
+  duration: 3600
   # fraction of frame pixels that must change to count as movement
   motion_threshold: 0.02
   photos_dir: "surveillance_photos"
 
 logging:
-  level: INFO
+  level: DEBUG
   filename: app.log

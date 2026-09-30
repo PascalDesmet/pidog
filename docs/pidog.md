@@ -505,11 +505,13 @@ arbitrary point. Re-enabling `signal.alarm(0)` would be the fix.
 while not self.exit_flag:
     try:
         with self.legs_thread_lock:
-            self.leg_current_angles = list.copy(self.legs_action_buffer[0])
+            action = self.legs_action_buffer[0]
+            self.leg_current_angles = list.copy(action)
         # lock released before the slow part
         self.legs.servo_move(self.leg_current_angles, self.legs_speed)
         with self.legs_thread_lock:
-            self.legs_action_buffer.pop(0)
+            if self.legs_action_buffer and self.legs_action_buffer[0] is action:
+                self.legs_action_buffer.pop(0)
     except IndexError:
         sleep(0.001)
     except Exception as e:
@@ -526,15 +528,13 @@ Design notes:
 * **The lock is held only around the list access**, never across
   `servo_move()` (which blocks for the whole interpolated motion). This is what
   lets `legs_stop()` clear the buffer mid-motion.
-* **Legs pop *after* the move; head and tail pop *before*.** This asymmetry is
-  significant: for legs, `is_legs_done()` (buffer empty) becomes true only once
-  the last frame has physically finished, whereas for head/tail the buffer
-  empties one frame *before* the motion completes. So `wait_head_done()` can
-  return while the head is still moving — several routines in
-  `preset_actions.py` compensate with explicit `sleep()`s.
-* A clear during a move leaves the just-completed frame in flight and then
-  `pop(0)` removes *someone else's* frame if new frames arrived in the interim —
-  a small race window inherent to the pop-after-move ordering.
+* **All three groups pop *after* the move**, so `is_*_done()` (buffer empty)
+  becomes true only once the last frame has physically finished —
+  `wait_head_done()` / `wait_tail_done()` block until the motion completes.
+* The pop is guarded by identity (`buffer[0] is action`): if `*_stop()` clears
+  the buffer mid-move and a new frame is queued before the in-flight
+  `servo_move()` returns, the worker skips the pop instead of dropping the
+  new frame.
 * Any non-`IndexError` exception **kills the thread permanently** (`break`); the
   robot then silently stops responding to leg commands.
 
@@ -557,7 +557,7 @@ orientation.
 
 ### `_tail_action_thread` (lines 419–431)
 
-The simplest of the three: pop, then `servo_move`. No clamping.
+The simplest of the three: `servo_move`, then pop. No clamping.
 
 ### `_rgb_strip_thread` (lines 434–444)
 
@@ -758,8 +758,8 @@ variant. Reading `len()` without the lock is safe enough in CPython, but these
 are the functions that turn the asynchronous buffers into the sequential API
 that `preset_actions` and `ActionFlow` rely on.
 
-Reminder from §7: because head/tail pop *before* moving, `wait_head_done()`
-returns slightly early.
+All three buffers pop after the move completes, so `wait_*_done()` returns
+only once the queued motion has physically finished.
 
 ---
 
@@ -1082,8 +1082,9 @@ Ordered roughly by impact.
    fire later at an arbitrary point.
 7. **Ultrasonic threads are non-daemon**, so forgetting `close()` hangs process
    exit.
-8. **Head/tail pop before moving, legs pop after** — `wait_head_done()` /
-   `wait_tail_done()` return before the motion physically completes.
+8. ~~Head/tail pop before moving, legs pop after~~ — **fixed**: all three
+   workers now pop after `servo_move()` (with an identity guard against
+   clear-and-refill), so `wait_*_done()` blocks until the motion finishes.
 9. **Speed is per-group state, not per-frame** — a later `*_move()` with a
    different speed retroactively changes frames already queued.
 10. **`speak()` shells out to `sudo killall pulseaudio` on every call** — a
