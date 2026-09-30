@@ -78,7 +78,6 @@ class Feature(ABC):
         }
 
     # ── shared helpers ───────────────────────────────────────────────────
-    # TODO: is this still used ?
     def sweep_scan(
         self,
         predicate: Callable[[], bool],

@@ -86,12 +86,10 @@ def build_features(body: Body, senses: Senses, camera: Camera, cfg: Config) -> l
 def build_io(cfg: Config, body: Body | None = None) -> TextIO | VoiceIO:
     mode = cfg.get("io.mode", "text")
     name = cfg.get("dog.name", "Scooby Doo")
-    welcome = f"Hi, I'm {name}. Type 'quit' to exit."
 
     if mode == "voice":
         v = cfg.get("io.voice", {})
         return VoiceIO(
-            welcome=welcome,
             wake_word=v.get("wake_word") or [f"hey {name.lower()}"],
             answer_on_wake=v.get("answer_on_wake", ""),
             stt_language=v.get("stt_language", "en-us"),
@@ -99,7 +97,7 @@ def build_io(cfg: Config, body: Body | None = None) -> TextIO | VoiceIO:
             keyboard_enable=True,
             body=body,
         )
-    return TextIO(welcome=welcome)
+    return TextIO()
 
 
 def build_app(config_path: str | None = None) -> "App":
