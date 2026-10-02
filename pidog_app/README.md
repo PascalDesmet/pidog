@@ -102,7 +102,10 @@ pidog_app/
     │       ├── wake_from_stasis.py
     │       ├── find_object.py
     │       ├── recognize_person.py
-    │       └── check_water_bowl.py
+    │       ├── check_water_bowl.py
+    │       ├── perform_actions.py
+    │       ├── guard_the_perimeter.py
+    │       └── be_superman.py
     ├── brain/
     │   ├── __init__.py
     │   ├── brain.py             # LLM tool-calling loop
@@ -199,6 +202,7 @@ In text mode you'll get a `>>> ` prompt. Type `quit` to exit. Try:
 - *"can you find something red?"* → triggers `find_object` with `target=red`
 - *"do you see anyone?"* → triggers `recognize_person`
 - *"is my water bowl empty?"* → triggers `check_water_bowl`
+- *"be superman"* → triggers `be_superman` (then pick the dog up)
 - *"what's 7 times 8?"* → plain chat reply (no tool)
 
 ---
@@ -222,6 +226,18 @@ this:
 Text or voice input while sleeping does **not** wake the dog — only
 physical petting does. The main loop rejects text input with a "pet my
 head to wake me up" message while `_sleeping` is true.
+
+A third watcher, the **pickup watcher** (`_pickup_watcher`), drives the
+`be_superman` feature autonomously: it polls the IMU every 50 ms while
+the dog is awake, and when the pick-up gesture is detected (nose-down
+tilt, then held level belly-down) the dog strikes a superman pose —
+red chest light, stretched legs, wagging tail, "woohoo". A nose-down
+tilt lands it back on its feet, and `superman.restore_delay` seconds
+(3 by default) after landing it returns to its default waiting state
+(sit + breath-yellow light). The watcher only acts while the dog is
+idle: it is gated off whenever a feature is running (`_sleep_inhibit`),
+the dog is sleeping, or queued actions/servo motion are still in flight.
+Disable it with `superman.enabled: false` in `config.yaml`.
 
 ---
 
@@ -376,7 +392,8 @@ One is /home/pds/.devin/config.json — deny rules blocking reads in .cache, .ve
 The other one is /home/pds/AGENTS.md — short always-on rule pointing at pidog_app as the project, noting the venv, config locations, and the pidog-app systemd service.
 
 ```bash
-# Workspace Rules
+
+ Workspace Rules
 
 This workspace is the home directory, NOT a project root. Do not scan or search the
 whole home directory — scope all file searches, greps, and edits to the relevant

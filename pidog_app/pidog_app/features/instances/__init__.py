@@ -10,6 +10,7 @@ from .recognize_person import RecognizePerson
 from .check_water_bowl import CheckWaterBowl
 from .perform_actions import PerformActions
 from .guard_the_perimeter import GuardThePerimeter
+from .be_superman import BeSuperman
 
 __all__ = [
     "WakeFromStasis",
@@ -18,4 +19,5 @@ __all__ = [
     "CheckWaterBowl",
     "PerformActions",
     "GuardThePerimeter",
+    "BeSuperman",
 ]

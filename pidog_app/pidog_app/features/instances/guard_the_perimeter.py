@@ -71,6 +71,7 @@ class GuardThePerimeter(Feature):
             "required": [],
         }
 
+    # TODO: add a way to stop the guard the perimeter feature
     def run(self, duration=None, **kwargs) -> FeatureResult:
         head_speed = float(self.cfg.get("guard.head_speed", 15))
         dwell_seconds = float(self.cfg.get("guard.dwell_seconds", 4.0))

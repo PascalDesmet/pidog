@@ -8,7 +8,7 @@ dog:
 
 llm:
   # Ollama runs on the laptop; expose it on the LAN in Ollama settings.
-  ip: "192.168.0.163"
+  ip: "192.168.0.136"
   port: 11434
   # Must support tool/function calling: llama3.1, qwen2.5, mistral-nemo, ...
   model: "qwen2.5:7b"
@@ -35,6 +35,14 @@ vision:
   camera_hflip: false
   face_track_timeout: 30.0
   face_track_seen_hold: 10.0
+
+superman:
+  # background watcher: fly like superman when picked up while idle
+  enabled: true
+  # seconds the pidog waits to be picked up
+  duration: 60
+  # seconds after landing before returning to the default waiting state
+  restore_delay: 3
 
 guard:
   # very slow sweep

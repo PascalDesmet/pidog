@@ -46,6 +46,7 @@ from .features.instances import (
     CheckWaterBowl,
     PerformActions,
     GuardThePerimeter,
+    BeSuperman,
 )
 from .brain import Brain
 from .io import TextIO, VoiceIO
@@ -80,6 +81,7 @@ def build_features(body: Body, senses: Senses, camera: Camera, cfg: Config) -> l
         CheckWaterBowl(body, senses, camera, cfg),
         PerformActions(body, senses, camera, cfg),
         GuardThePerimeter(body, senses, camera, cfg),
+        BeSuperman(body, senses, camera, cfg),
     ]
 
 
@@ -215,6 +217,20 @@ class App:
         )
         wake_watcher.start()
 
+        # Pickup watcher: polls the IMU through the BeSuperman gesture
+        # state machine while the dog is awake and idle. Pickup -> fly
+        # pose; nose-down tilt -> stand. Gated so it can only act when no
+        # other feature or task owns the body.
+        superman = self.registry.get("be_superman")
+        pickup_watcher = None
+        if superman is not None and self.cfg.get("superman.enabled", True):
+            pickup_watcher = threading.Thread(
+                target=self._pickup_watcher,
+                args=(superman,),
+                daemon=True,
+            )
+            pickup_watcher.start()
+
         try:
             while True:
                 user_text = self.io.listen()
@@ -260,6 +276,8 @@ class App:
             self._wake_complete.set()  # unblock any wait on wake_complete
             sleep_watcher.join(timeout=1)
             wake_watcher.join(timeout=1)
+            if pickup_watcher is not None:
+                pickup_watcher.join(timeout=1)
             self._quit_dog_gracefully()
             self.log_energy_level("Stop")
             self.stop()
@@ -342,6 +360,63 @@ class App:
                 self._mark_activity(wake=True)
 
                 self._wake_complete.set()
+
+    def _pickup_watcher(self, superman: BeSuperman) -> None:
+        """Background loop that flies the dog like superman on pickup.
+
+        Polls the IMU every 50 ms through the BeSuperman gesture state
+        machine, but only acts when the dog is NOT performing other
+        features or tasks:
+
+        - ``_sleep_inhibit`` set  → a feature is running inside
+          ``brain.handle()``; skip.
+        - ``_sleeping``           → the dog is asleep; skip.
+        - ``superman.is_busy()``  → queued actions or buffered servo
+          motion (e.g. a standby fidget); skip.
+
+        Skipped cycles call ``superman.reset()`` so a pickup that began
+        mid-task can't trigger a late fly once the dog goes idle. While
+        the dog is held up the idle timer is kept alive (being held is
+        interaction) and the action flow stays in THINK so standby
+        fidgets can't pull the legs out of the superman pose; the
+        continuous ``body_stop()`` inside ``poll()`` also cancels any
+        fidget that slips in between polls. ``superman.restore_delay``
+        seconds after landing the dog returns to its default waiting
+        state (sit + breath-yellow light) via the ``'rest'`` event.
+        """
+        while self._running:
+            time.sleep(0.05)
+            if not self._running:
+                break
+            if self._sleep_inhibit.is_set():
+                superman.reset()
+                continue
+            with self._sleep_lock:
+                sleeping = self._sleeping
+            if sleeping:
+                superman.reset()
+                continue
+            # While held up, keep polling so the put-down -> stand
+            # transition still lands even if the tail is still wagging.
+            if not superman.is_up and superman.is_busy():
+                superman.reset()
+                continue
+            event = superman.poll()
+            if event == "fly":
+                _report("picked up — flying like superman")
+                self.body.set_status(ActionStatus.THINK)
+            elif event == "stand":
+                _report("put down — standing")
+                # A feature may have started mid-flight — don't stomp
+                # its THINK status by flipping back to STANDBY.
+                if not self._sleep_inhibit.is_set():
+                    self.body.set_status(ActionStatus.STANDBY)
+            elif event == "rest":
+                _report("superman back to default waiting state")
+            if event or superman.is_up:
+                # Being picked up/held counts as interaction: keep the
+                # dog out of the idle sleep path while airborne.
+                self._mark_activity()
 
     def _reset_to_startup(self) -> None:
         """Restore the dog to its post-startup state after a brain error.
