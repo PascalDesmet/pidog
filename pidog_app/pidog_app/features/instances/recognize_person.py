@@ -63,8 +63,8 @@ class RecognizePerson(Feature):
         )
 
     def _look(self, yaw: float, pitch: float, speed: int = 40) -> None:
-        """Point the head at [yaw, 0, pitch] with -40 pitch compensation."""
-        self.body.head_move([[yaw, 0, pitch]], pitch_comp=-40, immediately=True, speed=speed)
+        """Point the head at [yaw, 0, pitch], level (no pitch compensation)."""
+        self.body.head_move([[yaw, 0, pitch]], pitch_comp=0, immediately=True, speed=speed)
 
     def _track_face(self, timeout: float = 20.0, seen_hold: float = 3.0) -> bool:
         """Look for a face and follow it with the head.
